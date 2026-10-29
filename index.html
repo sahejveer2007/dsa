@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Emergency Traffic Controller - Ambulance & Fire Truck</title>
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --card-bg: #121929;
+      --border: #1e293b;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --green: #10b981;
+      --green-glow: rgba(16, 185, 129, 0.4);
+      --red: #ef4444;
+      --red-glow: rgba(239, 68, 68, 0.4);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+    }
+
+    .app-container {
+      max-width: 1000px;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* TOP HEADER */
+    header {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand-icon {
+      font-size: 24px;
+      background: #1e293b;
+      width: 42px;
+      height: 42px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .brand h1 { font-size: 1.15rem; font-weight: 800; }
+    .brand p { font-size: 0.75rem; color: var(--text-muted); }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .pill {
+      background: #1e293b;
+      border: 1px solid var(--border);
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 0.78rem;
+      font-weight: 700;
+    }
+    .pill.active {
+      background: rgba(16, 185, 129, 0.15);
+      border-color: #10b981;
+      color: #34d399;
+    }
+    .pill.emergency {
+      background: rgba(239, 68, 68, 0.25);
+      border-color: #ef4444;
+      color: #fca5a5;
+      animation: alertGlow 0.8s infinite alternate;
+    }
+    @keyframes alertGlow {
+      from { box-shadow: 0 0 4px var(--red-glow); }
+      to { box-shadow: 0 0 16px var(--red-glow); }
+    }
+
+    /* 2 COLUMNS: INTERSECTION + PREEMPTION STACK */
+    .stage-grid {
+      display: grid;
+      grid-template-columns: 1.45fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 850px) {
+      .stage-grid { grid-template-columns: 1fr; }
+    }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .card-title {
+      font-size: 0.92rem;
+      font-weight: 800;
+      margin-bottom: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* 4-WAY INTERSECTION ROADS CANVAS */
+    .intersection-box {
+      background: #080c14;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      height: 400px;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .road-vert {
+      position: absolute;
+      top: 0; bottom: 0;
+      left: calc(50% - 65px);
+      width: 130px;
+      background: #162032;
+      border-left: 2px dashed #334155;
+      border-right: 2px dashed #334155;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 8px 0;
+    }
+    .road-horiz {
+      position: absolute;
+      left: 0; right: 0;
+      top: calc(50% - 65px);
+      height: 130px;
+      background: #162032;
+      border-top: 2px dashed #334155;
+      border-bottom: 2px dashed #334155;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 8px;
+    }
+
+    /* CENTER TIMER HUB */
+    .center-timer-hub {
+      position: absolute;
+      width: 114px;
+      height: 114px;
+      background: #0d131f;
+      border: 2px solid #334155;
+      border-radius: 16px;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.6);
+      text-align: center;
+    }
+    .center-timer-hub.emergency-active {
+      border-color: #ef4444;
+      box-shadow: 0 0 20px var(--red-glow);
+    }
+    .timer-digits {
+      font-size: 2.3rem;
+      font-weight: 900;
+      color: #fff;
+      font-variant-numeric: tabular-nums;
+      line-height: 1;
+    }
+    .active-lane-label {
+      font-size: 0.65rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      color: var(--green);
+      margin-top: 3px;
+    }
+
+    /* SIGNAL HEADS WITH TIMERS */
+    .signal-head {
+      position: absolute;
+      z-index: 15;
+      background: #000;
+      border: 1px solid #475569;
+      border-radius: 8px;
+      padding: 4px 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    }
+    .sig-n { top: 10px; left: calc(50% - 130px); }
+    .sig-s { bottom: 10px; right: calc(50% - 130px); }
+    .sig-w { left: 10px; bottom: calc(50% - 90px); }
+    .sig-e { right: 10px; top: calc(50% - 90px); }
+
+    .bulb {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #222;
+      transition: all 0.2s ease;
+    }
+    .bulb.green { background: var(--green); box-shadow: 0 0 10px var(--green-glow); }
+    .bulb.red { background: var(--red); box-shadow: 0 0 8px var(--red-glow); }
+    .sig-timer {
+      font-size: 0.8rem;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      min-width: 24px;
+      text-align: right;
+    }
+
+    /* VEHICLE QUEUES IN LANES */
+    .lane-queue {
+      position: absolute;
+      z-index: 12;
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      pointer-events: none;
+    }
+    .q-north {
+      top: 40px; bottom: calc(50% + 70px);
+      left: calc(50% - 40px); width: 80px;
+      flex-direction: column-reverse; justify-content: flex-start;
+    }
+    .q-south {
+      bottom: 40px; top: calc(50% + 70px);
+      left: calc(50% - 40px); width: 80px;
+      flex-direction: column; justify-content: flex-start;
+    }
+    .q-west {
+      left: 40px; right: calc(50% + 70px);
+      top: calc(50% - 40px); height: 80px;
+      flex-direction: row-reverse; justify-content: flex-start;
+    }
+    .q-east {
+      right: 40px; left: calc(50% + 70px);
+      top: calc(50% - 40px); height: 80px;
+      flex-direction: row; justify-content: flex-start;
+    }
+
+    .car-chip {
+      background: #1e293b;
+      border: 1px solid #334155;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      white-space: nowrap;
+    }
+    .car-chip.ambulance {
+      background: #7f1d1d;
+      border-color: #ef4444;
+      color: #fee2e2;
+      animation: alertFlash 0.5s infinite alternate;
+      box-shadow: 0 0 12px var(--red-glow);
+    }
+    .car-chip.fire {
+      background: #991b1b;
+      border-color: #f97316;
+      color: #ffedd5;
+      animation: alertFlash 0.5s infinite alternate;
+      box-shadow: 0 0 12px rgba(249, 115, 22, 0.4);
+    }
+    @keyframes alertFlash {
+      from { box-shadow: 0 0 4px var(--red-glow); border-color: #ef4444; }
+      to { box-shadow: 0 0 16px var(--red-glow), 0 0 6px #fff; border-color: #fff; }
+    }
+
+    /* TRANSIT BANNER */
+    .transit-banner {
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.35);
+      color: #fca5a5;
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 10px;
+    }
+
+    /* RIGHT: PREEMPTION STACK */
+    .stack-tube {
+      background: #080c14;
+      border: 2px dashed #334155;
+      border-top: none;
+      border-radius: 0 0 12px 12px;
+      min-height: 220px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column-reverse; /* LIFO: Top is at the top */
+      gap: 8px;
+      position: relative;
+    }
+    .stack-top-badge {
+      position: absolute;
+      top: 6px;
+      right: 10px;
+      font-size: 0.65rem;
+      font-weight: 800;
+      color: #c084fc;
+      background: rgba(168, 85, 247, 0.15);
+      border: 1px solid #a855f7;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .stack-item {
+      background: #1e293b;
+      border: 1px solid #3b82f6;
+      border-left: 4px solid #3b82f6;
+      padding: 9px 12px;
+      border-radius: 6px;
+      font-size: 0.78rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* CONTROLS */
+    .controls-deck {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .btn {
+      padding: 12px 16px;
+      border-radius: 8px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border: 1px solid transparent;
+      transition: all 0.15s ease;
+      color: #fff;
+    }
+    .btn:hover { transform: translateY(-1px); filter: brightness(1.1); }
+    .btn:active { transform: translateY(1px); }
+
+    .btn-amb {
+      background: #dc2626;
+      border-color: #ef4444;
+      box-shadow: 0 4px 12px var(--red-glow);
+    }
+    .btn-fire {
+      background: #ea580c;
+      border-color: #f97316;
+      box-shadow: 0 4px 12px rgba(234, 88, 12, 0.35);
+    }
+    .btn-car {
+      background: #1e293b;
+      border-color: #334155;
+    }
+    .btn-timer {
+      background: #0f766e;
+      border-color: #14b8a6;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="app-container">
+    
+    <!-- TOP HEADER -->
+    <header>
+      <div class="brand">
+        <div class="brand-icon">🚨</div>
+        <div>
+          <h1>Emergency Traffic Management System</h1>
+          <p>Signal Preemption for Ambulance & Fire Truck</p>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <div class="pill active" id="modePill">● NORMAL OPERATION</div>
+        <div class="pill">CLOCK: <span id="secTick" style="color:#38bdf8;">1s</span></div>
+      </div>
+    </header>
+
+    <!-- MAIN GRID -->
+    <div class="stage-grid">
+      
+      <!-- LEFT: 4-WAY INTERSECTION -->
+      <div class="card">
+        <div class="card-title">
+          <span>Intersection Traffic Signals</span>
+          <span style="font-size:0.75rem; color:var(--text-muted);">Normal: 6s | Emergency: 8s</span>
+        </div>
+
+        <div class="intersection-box">
+          <!-- VERTICAL ROAD -->
+          <div class="road-vert">
+            <div class="lane-queue q-north" id="qNorth"></div>
+            <div class="lane-queue q-south" id="qSouth"></div>
+          </div>
+
+          <!-- HORIZONTAL ROAD -->
+          <div class="road-horiz">
+            <div class="lane-queue q-west" id="qWest"></div>
+            <div class="lane-queue q-east" id="qEast"></div>
+          </div>
+
+          <!-- SIGNALS WITH REAL TIMERS -->
+          <!-- NORTH -->
+          <div class="signal-head sig-n">
+            <div class="bulb green" id="bulbN"></div>
+            <span style="font-size:0.7rem; color:#94a3b8; font-weight:700;">N</span>
+            <span class="sig-timer" id="timerN" style="color:var(--green);">6s</span>
+          </div>
+
+          <!-- EAST -->
+          <div class="signal-head sig-e">
+            <div class="bulb red" id="bulbE"></div>
+            <span style="font-size:0.7rem; color:#94a3b8; font-weight:700;">E</span>
+            <span class="sig-timer" id="timerE" style="color:var(--red);">6s</span>
+          </div>
+
+          <!-- SOUTH -->
+          <div class="signal-head sig-s">
+            <div class="bulb red" id="bulbS"></div>
+            <span style="font-size:0.7rem; color:#94a3b8; font-weight:700;">S</span>
+            <span class="sig-timer" id="timerS" style="color:var(--red);">12s</span>
+          </div>
+
+          <!-- WEST -->
+          <div class="signal-head sig-w">
+            <div class="bulb red" id="bulbW"></div>
+            <span style="font-size:0.7rem; color:#94a3b8; font-weight:700;">W</span>
+            <span class="sig-timer" id="timerW" style="color:var(--red);">18s</span>
+          </div>
+
+          <!-- CENTER TIMER HUB -->
+          <div class="center-timer-hub" id="centerHub">
+            <div class="timer-digits" id="centerTimerDigits">6</div>
+            <div class="active-lane-label" id="centerLaneLabel">NORTH GREEN</div>
+          </div>
+        </div>
+
+        <!-- TRANSIT BANNER -->
+        <div class="transit-banner" id="transitBanner" style="display: none;">
+          <span id="transitBannerText">🚨 Ambulance crossing junction corridor...</span>
+          <span id="transitCountdown" style="font-size:0.85rem; font-weight:900; color:#fff;">8s</span>
+        </div>
+
+        <!-- CONTROLS UNDER INTERSECTION -->
+        <div class="controls-deck">
+          <button class="btn btn-amb" onclick="dispatchAmbulance()">
+            🚑 Dispatch Ambulance (8s Transit)
+          </button>
+          <button class="btn btn-fire" onclick="dispatchFireTruck()">
+            🚒 Dispatch Fire Truck (8s Transit)
+          </button>
+          <button class="btn btn-car" onclick="addRegularTraffic()">
+            🚗 Add Regular Car
+          </button>
+          <button class="btn btn-timer" id="btnPause" onclick="toggleTimer()">
+            ⏸ Pause / Resume Timer
+          </button>
+        </div>
+      </div>
+
+      <!-- RIGHT: EMERGENCY PREEMPTION STACK -->
+      <div class="card" style="display:flex; flex-direction:column; justify-content:space-between;">
+        <div>
+          <div class="card-title">
+            <span>Emergency Preemption Stack</span>
+            <span style="font-size:0.7rem; color:#c084fc; background:rgba(168,85,247,0.15); border:1px solid #a855f7; padding:2px 8px; border-radius:4px;">LIFO STACK</span>
+          </div>
+          <p style="font-size:0.75rem; color:var(--text-muted); margin-bottom:12px; line-height:1.4;">
+            When an Ambulance or Fire Truck arrives, the interrupted signal phase and its remaining seconds are pushed to this stack. When crossing finishes, it pops to resume!
+          </p>
+
+          <div class="stack-tube" id="preemptionStackTube">
+            <div class="stack-top-badge">STACK TOP (Pops First)</div>
+            <div id="stackEmptyMsg" style="color:#64748b; font-size:0.75rem; text-align:center; margin:auto;">
+              Stack Empty (Normal Flow)
+            </div>
+          </div>
+        </div>
+
+        <div style="background:#080c14; border:1px solid var(--border); border-radius:8px; padding:12px; font-size:0.76rem; color:#94a3b8; margin-top:14px; line-height:1.5;">
+          <span style="color:#fff; font-weight:700;">Simple DSA Logic:</span><br>
+          1. <strong>Queue (FIFO):</strong> Cars wait in road lanes.<br>
+          2. <strong>Stack (LIFO):</strong> Saves paused light on emergency.<br>
+          3. <strong>8s Clearance:</strong> Emergency vehicle crosses with priority green.<br>
+          4. <strong>Pop:</strong> Restores the paused light with its exact saved seconds!
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+  <script>
+    const DIRECTIONS = ['North', 'East', 'South', 'West'];
+    const laneQueues = [[], [], [], []];
+    const preemptionStack = []; // LIFO Stack
+
+    const NORMAL_DURATION = 6;
+    const EMERGENCY_TRANSIT_TIME = 8;
+    
+    let currentPhase = 0; // 0: North, 1: East, 2: South, 3: West
+    let secondsLeft = NORMAL_DURATION;
+    let elapsed = 1;
+    let isEmergency = false;
+    let activeEmergencyType = '';
+    let timerId = null;
+    let carCount = 100;
+
+    function updateView() {
+      document.getElementById('centerTimerDigits').innerText = secondsLeft;
+      const hub = document.getElementById('centerHub');
+
+      if (isEmergency) {
+        document.getElementById('centerLaneLabel').innerText = DIRECTIONS[currentPhase].toUpperCase() + ' [EMERGENCY]';
+        document.getElementById('centerLaneLabel').style.color = 'var(--red)';
+        hub.classList.add('emergency-active');
+      } else {
+        document.getElementById('centerLaneLabel').innerText = DIRECTIONS[currentPhase].toUpperCase() + ' GREEN';
+        document.getElementById('centerLaneLabel').style.color = 'var(--green)';
+        hub.classList.remove('emergency-active');
+      }
+
+      document.getElementById('secTick').innerText = elapsed + 's';
+
+      const modePill = document.getElementById('modePill');
+      const banner = document.getElementById('transitBanner');
+
+      if (isEmergency) {
+        modePill.className = 'pill emergency';
+        modePill.innerText = `🚨 ${activeEmergencyType.toUpperCase()} (${secondsLeft}s)`;
+
+        banner.style.display = 'flex';
+        document.getElementById('transitBannerText').innerText = `🚨 ${activeEmergencyType} crossing junction corridor... Priority Green Active!`;
+        document.getElementById('transitCountdown').innerText = `${secondsLeft}s remaining`;
+      } else {
+        modePill.className = 'pill active';
+        modePill.innerText = '● NORMAL OPERATION';
+        banner.style.display = 'none';
+      }
+
+      // 4 Signal heads
+      DIRECTIONS.forEach((dir, idx) => {
+        const code = dir.charAt(0);
+        const bulb = document.getElementById('bulb' + code);
+        const timer = document.getElementById('timer' + code);
+
+        if (idx === currentPhase) {
+          bulb.className = 'bulb green';
+          timer.innerText = secondsLeft + 's';
+          timer.style.color = 'var(--green)';
+        } else {
+          bulb.className = 'bulb red';
+          let phasesAway = (idx - currentPhase + 4) % 4;
+          let secUntil = (phasesAway - 1) * NORMAL_DURATION + secondsLeft;
+          timer.innerText = secUntil + 's';
+          timer.style.color = 'var(--red)';
+        }
+      });
+
+      // Render Queues
+      ['qNorth', 'qEast', 'qSouth', 'qWest'].forEach((id, idx) => {
+        const box = document.getElementById(id);
+        box.innerHTML = '';
+        laneQueues[idx].forEach(c => {
+          const chip = document.createElement('div');
+          chip.className = `car-chip ${c.cls}`;
+          chip.innerHTML = `<span>${c.icon}</span> <span>${c.id}</span>`;
+          box.appendChild(chip);
+        });
+      });
+
+      // Render Preemption Stack
+      const sTube = document.getElementById('preemptionStackTube');
+      sTube.innerHTML = '<div class="stack-top-badge">STACK TOP (Pops First)</div>';
+      if (preemptionStack.length === 0) {
+        sTube.innerHTML += '<div id="stackEmptyMsg" style="color:#64748b; font-size:0.75rem; text-align:center; margin:auto;">Stack Empty (Normal Flow)</div>';
+      } else {
+        preemptionStack.forEach(st => {
+          const item = document.createElement('div');
+          item.className = 'stack-item';
+          item.innerHTML = `<span><strong>${DIRECTIONS[st.phase]} Lane</strong> (${st.remaining}s saved)</span> <span style="color:#f87171; font-weight:700;">${st.reason}</span>`;
+          sTube.appendChild(item);
+        });
+      }
+    }
+
+    // 1-SECOND TICK
+    function tick() {
+      elapsed++;
+
+      if (isEmergency) {
+        secondsLeft--;
+
+        if (secondsLeft === Math.floor(EMERGENCY_TRANSIT_TIME / 2)) {
+          if (laneQueues[currentPhase].length > 0 && laneQueues[currentPhase][0].isEm) {
+            laneQueues[currentPhase].shift();
+          }
+        }
+
+        if (secondsLeft <= 0) {
+          popEmergencyStack();
+        }
+
+        updateView();
+        return;
+      }
+
+      if (laneQueues[currentPhase].length > 0 && secondsLeft % 2 === 0) {
+        laneQueues[currentPhase].shift();
+      }
+
+      secondsLeft--;
+
+      if (secondsLeft <= 0) {
+        currentPhase = (currentPhase + 1) % 4;
+        secondsLeft = NORMAL_DURATION;
+      }
+
+      updateView();
+    }
+
+    function popEmergencyStack() {
+      if (preemptionStack.length > 0) {
+        const saved = preemptionStack.pop();
+        currentPhase = saved.phase;
+        secondsLeft = saved.remaining > 0 ? saved.remaining : NORMAL_DURATION;
+      } else {
+        currentPhase = (currentPhase + 1) % 4;
+        secondsLeft = NORMAL_DURATION;
+      }
+      isEmergency = false;
+      activeEmergencyType = '';
+    }
+
+    function dispatchAmbulance() {
+      preemptionStack.push({
+        phase: currentPhase,
+        remaining: secondsLeft,
+        reason: 'Ambulance 🚑'
+      });
+      isEmergency = true;
+      activeEmergencyType = 'Ambulance 🚑';
+
+      currentPhase = 3; // West
+      secondsLeft = EMERGENCY_TRANSIT_TIME; // 8 Seconds
+
+      const id = 'AMB-' + Math.floor(100 + Math.random() * 900);
+      laneQueues[3].unshift({ id, icon: '🚑', cls: 'ambulance', isEm: true });
+
+      updateView();
+    }
+
+    function dispatchFireTruck() {
+      preemptionStack.push({
+        phase: currentPhase,
+        remaining: secondsLeft,
+        reason: 'Fire Truck 🚒'
+      });
+      isEmergency = true;
+      activeEmergencyType = 'Fire Truck 🚒';
+
+      currentPhase = 2; // South
+      secondsLeft = EMERGENCY_TRANSIT_TIME; // 8 Seconds
+
+      const id = 'FIRE-' + Math.floor(100 + Math.random() * 900);
+      laneQueues[2].unshift({ id, icon: '🚒', cls: 'fire', isEm: true });
+
+      updateView();
+    }
+
+    function addRegularTraffic() {
+      const d = Math.floor(Math.random() * 4);
+      const id = 'CAR-' + (++carCount);
+      laneQueues[d].push({ id, icon: '🚗', cls: 'regular', isEm: false });
+      updateView();
+    }
+
+    function toggleTimer() {
+      const btn = document.getElementById('btnPause');
+      if (timerId) {
+        clearInterval(timerId);
+        timerId = null;
+        btn.innerText = '▶ Resume Timer';
+      } else {
+        timerId = setInterval(tick, 1000);
+        btn.innerText = '⏸ Pause / Resume Timer';
+      }
+    }
+
+    // START
+    addRegularTraffic();
+    addRegularTraffic();
+    updateView();
+    timerId = setInterval(tick, 1000);
+  </script>
+</body>
+</html>
